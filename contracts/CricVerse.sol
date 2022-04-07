@@ -9,6 +9,13 @@ contract CricVerse is ERC721Enumerable, ReentrancyGuard, Ownable {
 
     uint minPrice = 0.1 ether;
     uint public maxTotalSupply = 2022;
+ mapping(address => bool) eligibleForReward;
+ uint luckyMinters = 100;
+    uint public mintStartTime;
+    uint public collectionSize = 2022;
+    uint public mintEndTime;
+    uint public mintPrice = 0.1 ether;
+    uint public poolBalance;
 
     string[] private BattingPosition = [
         "Top Order",
@@ -156,6 +163,44 @@ contract CricVerse is ERC721Enumerable, ReentrancyGuard, Ownable {
         return output;
     }
 
+   
+ function addMoneyToPool() external payable {
+        require(msg.value> 0, "value should be greater than 0");
+        poolBalance += msg.value;
+    }
+
+ function claimRefund() public {
+        require(block.timestamp > mintEndTime, "mint not ended yet");
+        require(totalSupply() < collectionSize, "not eligible for refund");
+        require(balanceOf(msg.sender) > 0 , "not eligible as you don't have the nft");
+        // require(block.timestamp <= mintEndTime + 7*24*60*60);
+         _transfer(msg.sender, address(this), balanceOf(msg.sender));
+        payable(msg.sender).transfer(mintPrice*balanceOf(msg.sender));
+
+        if(eligibleForReward[msg.sender] == true && balanceOf(msg.sender) > 0) {
+        uint leftMint = 100 - totalSupply();
+        uint amount = poolBalance/leftMint;
+        payable(msg.sender).transfer(amount);
+        }
+
+        
+    }
+
+   mapping(address=> uint) availableMints;
+
+     modifier maxMintsPerAdd(uint256 numberOfTokens) {
+        require(
+            maxMintPerAddress - availableMints[msg.sender] >= 0 && numberOfTokens <= maxMintPerAddress - availableMints[msg.sender],
+            "Max mints per transaction exceeded"
+        );
+        _;
+    }
+
+ function withdraw() public view onlyOwner{
+        require(block.timestamp > mintEndTime + 7*24*60*60, "you can only withdraw after a week after the end of mint");
+        require(totalSupply() >= collectionSize, "not eligible for withdrawal");
+    }
+
 
     function tokenURI(uint256 tokenId) override public view returns (string memory) {
         string[19] memory parts;
@@ -208,17 +253,11 @@ contract CricVerse is ERC721Enumerable, ReentrancyGuard, Ownable {
     }
 
     function claim(uint256 tokenId) public nonReentrant payable {
-        require(msg.value >= minPrice, "Mint price should be greater than 20 matic");
-        require(tokenId > 0 && tokenId <= maxTotalSupply, "Token ID invalid");
+      
         _safeMint(_msgSender(), tokenId);
     }
 
-    function withdraw() public onlyOwner {
-        uint redeemableBalance = address(this).balance;
-        require(redeemableBalance > 0, "Insufficient Balance");
-        payable(msg.sender).transfer(redeemableBalance);
-    }
-    
+  
     function toString(uint256 value) internal pure returns (string memory) {
     // Inspired by OraclizeAPI's implementation - MIT license
     // https://github.com/oraclize/ethereum-api/blob/b42146b063c7d6ee1358846c198246239e9360e8/oraclizeAPI_0.4.25.sol
@@ -242,5 +281,18 @@ contract CricVerse is ERC721Enumerable, ReentrancyGuard, Ownable {
     }
 
     constructor() ERC721("CricVerse", "CricV") Ownable() {}
+
+    function mint(
+        address to,
+        uint256 quantity
+    ) public virtual payable maxMintsPerAdd(quantity){
+  
+        require(tokenId > 0 && tokenId <= maxTotalSupply, "Token ID invalid");
+       require(msg.value >= mintPrice, "value is less than mint price");
+        _mint(to, quantity, "", true);
+       if(totalSupply() < 100) {
+        eligibleForReward[msg.sender] = true;
+       }
+    }
 }
 
